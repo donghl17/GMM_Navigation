@@ -8,6 +8,7 @@ import copy
 import numpy as np
 import scipy.stats as st
 import math
+import time
 
 from geometry_msgs.msg import Point,Vector3
 from geometry_msgs.msg import PoseWithCovarianceStamped
@@ -74,33 +75,22 @@ def prob_visual(gmm_map):
     # print("prior:",prior)
     for x in np.arange(Xbottom,Xtop,resolution):
         y= np.arange(Ybottom,Ytop,resolution)
-        y=y.reshape(len(y),1)
-        # print(len(y))
-        # print("---------------")        
+        y=y.reshape(len(y),1)    
         L=int((Ytop-Ybottom)/resolution+1)
-        # print(L)
         x_temp=np.ones([L,1])*x
         z_temp=np.ones([L,1])*z_const
         pt_temp=np.hstack((x_temp,y,z_temp))
         totalpdf=np.zeros((L,1))
         for pp in range(0,num_tmp):
             Npdf=st.multivariate_normal.pdf(pt_temp,mu[pp,:],sigma[pp,:,:])
-            # print(Npdf)
-            # print("-------------------------------")
-            # print(np.size(Npdf))
             totalpdf=totalpdf+Npdf.reshape(len(Npdf),1)*prior[pp]
-        # print(totalpdf)
-        # print(pro[ptr,:].shape)
         pro[ptr,:]=totalpdf.reshape(pro[ptr,:].shape)
-        # print("ptr: ", ptr)
-        # print("pro[ptr,:]: ", totalpdf.reshape(pro[ptr,:].shape))
         ptr=ptr+1
-    # print("!!!!!!!!!!!!!!!!!!!!!!!!")
     # print(pro)
-    # print("!!!!!!!!!!!!!!!!!!!!!!!!")
     return pro,Xtop,Xbottom,Ytop,Ybottom
 
 def gmm_nav():
+    start=time.time()
     global z_const, gmm_map, resolution, begin_pos, begin_quat, target, move_pub, path_pub, tra_total, ang_total
     [pro,Xtop,Xbottom,Ytop,Ybottom]=prob_visual(gmm_map)
     # begin=[int((begin_pos[0]-Xbottom)/resolution),int((begin_pos[1]-Ybottom)/resolution)]
@@ -108,11 +98,7 @@ def gmm_nav():
     [Fx,Fy]=np.gradient(pro)
     # print("Fx: ", Fx)
     # print("Fy: ", Fy)
-    # F1_tmp=Fx[int((begin_pos[0]-Xbottom)/resolution),int((begin_pos[1]-Ybottom)/resolution)]
-    # F2_tmp=Fy[int((begin_pos[0]-Xbottom)/resolution),int((begin_pos[1]-Ybottom)/resolution)]
-    # F_prev=np.sqrt(pow(F1_tmp,2)+pow(F2_tmp,2))
     angle_ulti=math.atan((target[1]-begin_pos[1])/(target[0]-begin_pos[0]))
-    # while(true):
     goal=[begin_pos[0]+radius*math.cos(angle_ulti),begin_pos[1]+radius*math.sin(angle_ulti)] # position in the real world
     F1_tmp=Fx[int((goal[0]-Xbottom)/resolution),int((goal[1]-Ybottom)/resolution)]
     F2_tmp=Fy[int((goal[0]-Xbottom)/resolution),int((goal[1]-Ybottom)/resolution)]
@@ -138,26 +124,24 @@ def gmm_nav():
                 if (F1_now<F2_now):
                     goal=goal1_tmp
                     angle_x=math.atan((goal[1]-begin_pos[1])/(goal[0]-begin_pos[0]))/math.pi*180
-                    # angle_x=math.atan((target[1]-goal[1])/(target[0]-goal[0]))
-                    # print("-------------------------------------1", angle1)
                 else :
                     goal=goal2_tmp
                     angle_x=math.atan((goal[1]-begin_pos[1])/(goal[0]-begin_pos[0]))/math.pi*180
-                    # print("-------------------------------------2", angle2,angle_x)
-                    # angle_x=math.atan((target[1]-goal[1])/(target[0]-goal[0]))
-                break
-        print("0000000000000000000")    
+                break 
         
     tra_total=tra_total+radius
     [angleX,angleY,angleZ]=quat_to_euler(begin_quat[0],begin_quat[1],begin_quat[2],begin_quat[3])
     ang_total=ang_total+ abs(angle_x-angleZ)       
     print("tra_total= ", tra_total)
     print("ang_total= ", ang_total)
+    end=time.time()
+    print("----------------------------------navigation_time: ", end-start)
 
     ##vel pub
     stop = Twist()
     move_pub.publish(stop)
     [angleX,angleY,angleZ]=quat_to_euler(begin_quat[0],begin_quat[1],begin_quat[2],begin_quat[3])
+
     #rotate
     while(abs(angleZ-angle_x)>0.02):
         move=Twist()
@@ -167,19 +151,17 @@ def gmm_nav():
         move_pub.publish(stop)
         rospy.sleep(0.1) 
         [angleX,angleY,angleZ]=quat_to_euler(begin_quat[0],begin_quat[1],begin_quat[2],begin_quat[3])
-        print("angleeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee:")
+        print("angle:")
         print(angleZ)
         print(angle_x)
-    # print("-------------------------------------2")
     move_pub.publish(stop)
-    rospy.sleep(0.1) 
+    rospy.sleep(1) 
     # print(begin_pos)
     # print(goal)
 
     #translate
     while(abs(begin_pos[0]-goal[0])>0.03 or abs(begin_pos[1]-goal[1])>0.03):
-
-        print("positionnnnnnnnnnnn:")
+        print("position:")
         print(begin_pos)
         print(goal)
         move=Twist()
@@ -189,11 +171,17 @@ def gmm_nav():
         move_pub.publish(move)
         rospy.sleep(0.1)       
         move_pub.publish(stop)
-        
-    # print("-------------------------------------3")
     move_pub.publish(stop)
-    #angle jiaosudu 
-    #linar xiansudu 
+    print("-------------------------------control time: ", time.time()-end)
+    if (abs(begin_pos[0]-target[0])+abs(begin_pos[1]-target[1])<radius):
+        
+        print("tra_total= ", tra_total)
+        print("ang_total= ", ang_total)    
+        while (1):
+            print("Target Reached! Navigation Stop!")
+            ros.sleep(0.5)
+
+    #angle jiaosudu === linar xiansudu 
 
 def quat_to_euler(x,y,z,w):
     r = math.atan2(2*(w*x+y*z),1-2*(x*x+y*y))
@@ -236,11 +224,12 @@ def main():
         # print(gmm_cnt)
         if (goal_cnt==0 or gmm_cnt==0):
             print("wait for gmm_map and nav_target!")
-            rospy.sleep(0.5)
+            rospy.sleep(5)
+            #geometry_msgs/PoseStamped
         else:
             gmm_nav()
             rospy.sleep(0.5)
-            print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1")
+            print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
         
     rospy.spin()
 

@@ -1,5 +1,5 @@
 #include "submap_extraction.h"
-
+#define CLOCKS_PER_SEC ((clock_t)1000)
 
 void Submap::initMap(ros::NodeHandle nh_){
     mapcnt_=0;
@@ -111,8 +111,12 @@ void Submap::GMM_training(int novel_frame){
 //     }
 // }
     // std::cout<<"---------------------------data input finish!"<<std::endl;
+    clock_t start, finish;
+    start = clock();
     GMM *gmm = new GMM(dim_,cluster_num_); 
     gmm->Train(data,size); //Training GMM
+    finish = clock();
+    std::cout<<"----------------------------------mapping time: "<< (double)((finish-start)/CLOCKS_PER_SEC)<<std::endl;
     // std::cout<<gmm->Mean(0)[2]<<"------"<<gmm->Mean(1)[2]<<std::endl;
     SubGMM_list_.push_back(gmm);
     // delete gmm;
